@@ -198,7 +198,7 @@ log_loss_D_Summarized = 0
 log_loss_D_GAN = 0
 log_loss_D_Gradient_penalty = 0
 
-shift = len(dataloader)//opt.batchSize
+shift = len(dataloader)
 for epoch in range(opt.startepoch, opt.n_epochs):
     for i, batch in enumerate(dataloader):
         # Set model input
