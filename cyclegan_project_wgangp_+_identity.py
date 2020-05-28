@@ -187,6 +187,7 @@ log_loss_D_Gradient_penalty = 0
 shift = len(dataloader)
 for epoch in range(opt.startepoch, opt.n_epochs):
     for i, batch in enumerate(dataloader):
+        print(f'{i}time')
         # Set model input
         #g1 = timeit.default_timer()
         real_A = input_A.copy_(batch['A'])
