@@ -237,6 +237,7 @@ for epoch in range(opt.startepoch, opt.n_epochs):
         out_A = output_A.copy_(fake_A)
         fake_A = fake_A_buffer.push_and_pop(fake_A)
         for _ in range(1):
+            print('and')
             optimizer_D_A.zero_grad()
 
             # Real loss
