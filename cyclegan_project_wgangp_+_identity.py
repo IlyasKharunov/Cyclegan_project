@@ -236,7 +236,7 @@ for epoch in range(opt.startepoch, opt.n_epochs):
         ###### Discriminator A ######
         out_A = output_A.copy_(fake_A)
         fake_A = fake_A_buffer.push_and_pop(fake_A)
-        for _ in range(5):
+        for _ in range(1):
             optimizer_D_A.zero_grad()
 
             # Real loss
@@ -270,7 +270,7 @@ for epoch in range(opt.startepoch, opt.n_epochs):
         ###### Discriminator B ######
         out_B = output_B.copy_(fake_B)
         fake_B = fake_B_buffer.push_and_pop(fake_B)
-        for _ in range(5):
+        for _ in range(1):
             optimizer_D_B.zero_grad()
 
             # Real loss
