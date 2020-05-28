@@ -37,9 +37,9 @@ Params = namedtuple('Params', ['startepoch', 'n_epochs',
 
 
 opt = Params(startepoch = 4, n_epochs = 200, 
-             batchSize = 4, dataroot = 'database', 
+             batchSize = 1, dataroot = 'database', 
              lr = 0.0002, decay_epoch = 100, 
-             size = (200,360), input_nc = 3, 
+             size = (100,180), input_nc = 3, 
              output_nc = 3, cuda = True, 
              n_cpu = 0, resume = True)
 
@@ -166,10 +166,10 @@ if opt.resume == False:
 
 #load model to resume training
 if opt.resume == True:
-  netD_A.load_state_dict(torch.load(f'{base}output/netD_A.pth'))
-  netD_B.load_state_dict(torch.load(f'{base}output/netD_B.pth'))
-  netG_A2B.load_state_dict(torch.load(f'{base}output/netG_A2B.pth'))
-  netG_B2A.load_state_dict(torch.load(f'{base}output/netG_B2A.pth'))
+  netD_A.load_state_dict(torch.load(f'{base}outputwgp/netD_A.pth'))
+  netD_B.load_state_dict(torch.load(f'{base}outputwgp/netD_B.pth'))
+  netG_A2B.load_state_dict(torch.load(f'{base}outputwgp/netG_A2B.pth'))
+  netG_B2A.load_state_dict(torch.load(f'{base}outputwgp/netG_B2A.pth'))
 
 
 # In[ ]:
@@ -222,9 +222,9 @@ for epoch in range(opt.startepoch, opt.n_epochs):
         # Total loss
         #o1 = timeit.default_timer()
         loss_G = loss_identity_A + loss_identity_B + loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB
-        loss_G.backward()
+        #loss_G.backward()
         
-        optimizer_G.step()
+        #optimizer_G.step()
         #o2 = timeit.default_timer()
         #print(o1-o2)
         
@@ -255,10 +255,9 @@ for epoch in range(opt.startepoch, opt.n_epochs):
             pred_tilde=netD_A(x_tilde)
             gradients = torch.autograd.grad(outputs=pred_tilde, inputs=x_tilde,
                                   grad_outputs=torch.ones(pred_tilde.size(), device = 'cuda'),
-                                    create_graph=True, retain_graph=None, only_inputs=True)[0]
+                                    create_graph=True, retain_graph=True, only_inputs=True)[0]
 
-            gradients = gradients.view(gradients.size(0), -1)
-            D_A_gradient_penalty = 100 * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+            D_A_gradient_penalty = 100 * ((gradients.view(gradients.size(0), -1).norm(2, dim=1) - 1) ** 2).mean()
             # Total loss
             loss_D_A_GAN = loss_D_real + loss_D_fake
             loss_D_A = loss_D_A_GAN + D_A_gradient_penalty
@@ -289,7 +288,7 @@ for epoch in range(opt.startepoch, opt.n_epochs):
             pred_tilde=netD_B(x_tilde)
             gradients = torch.autograd.grad(outputs=pred_tilde, inputs=x_tilde,
                                   grad_outputs=torch.ones(pred_tilde.size(), device = 'cuda'),
-                                    create_graph=True, retain_graph=None, only_inputs=True)[0]
+                                    create_graph=True, retain_graph=True, only_inputs=True)[0]
             
             gradients = gradients.view(gradients.size(0), -1)
             D_B_gradient_penalty = 100 * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
