@@ -56,6 +56,44 @@ netD_A = Discriminator(opt.input_nc)
 netD_B = Discriminator(opt.output_nc)
 
 
+# In[11]:
+
+
+#init weights
+netG_A2B.apply(weights_init_normal)
+netG_B2A.apply(weights_init_normal)
+netD_A.apply(weights_init_normal)
+netD_B.apply(weights_init_normal)
+
+
+# In[ ]:
+
+
+#load model to finetune
+if opt.resume == False:
+  h2z = torch.load(f'{base}pretrained/horse2zebra.pth')
+  z2h = torch.load(f'{base}pretrained/zebra2horse.pth')
+
+  stat1 = netG_A2B.state_dict()
+  stat2 = netG_B2A.state_dict()
+
+  for i in stat1:
+      stat1[i] = h2z[i]
+
+  for i in stat1:
+      stat2[i] = z2h[i]
+
+  netG_A2B.load_state_dict(stat1)
+  netG_B2A.load_state_dict(stat2)
+
+#load model to resume training
+if opt.resume == True:
+  netD_A.load_state_dict(torch.load(f'{base}outputwgp/netD_A.pth'))
+  netD_B.load_state_dict(torch.load(f'{base}outputwgp/netD_B.pth'))
+  netG_A2B.load_state_dict(torch.load(f'{base}outputwgp/netG_A2B.pth'))
+  netG_B2A.load_state_dict(torch.load(f'{base}outputwgp/netG_B2A.pth'))
+
+
 # In[10]:
 
 
@@ -68,16 +106,6 @@ netG_A2B = torch.nn.DataParallel(netG_A2B, opt.gpu_ids)
 netG_B2A = torch.nn.DataParallel(netG_B2A, opt.gpu_ids)
 netD_A = torch.nn.DataParallel(netD_A, opt.gpu_ids)
 netD_B = torch.nn.DataParallel(netD_B, opt.gpu_ids)
-
-
-# In[11]:
-
-
-#init weights
-netG_A2B.apply(weights_init_normal)
-netG_B2A.apply(weights_init_normal)
-netD_A.apply(weights_init_normal)
-netD_B.apply(weights_init_normal)
 
 
 # In[ ]:
@@ -144,38 +172,6 @@ logger = SummaryWriter(filename_suffix='first', log_dir='logs')
 
 
 base = 'models/'
-
-
-# In[ ]:
-
-
-#load model to finetune
-if opt.resume == False:
-  h2z = torch.load(f'{base}pretrained/horse2zebra.pth')
-  z2h = torch.load(f'{base}pretrained/zebra2horse.pth')
-
-  stat1 = netG_A2B.state_dict()
-  stat2 = netG_B2A.state_dict()
-
-  for i in stat1:
-      stat1[i] = h2z[i]
-
-  for i in stat1:
-      stat2[i] = z2h[i]
-
-  netG_A2B.load_state_dict(stat1)
-  netG_B2A.load_state_dict(stat2)
-
-
-# In[ ]:
-
-
-#load model to resume training
-if opt.resume == True:
-  netD_A.load_state_dict(torch.load(f'{base}outputwgp/netD_A.pth'))
-  netD_B.load_state_dict(torch.load(f'{base}outputwgp/netD_B.pth'))
-  netG_A2B.load_state_dict(torch.load(f'{base}outputwgp/netG_A2B.pth'))
-  netG_B2A.load_state_dict(torch.load(f'{base}outputwgp/netG_B2A.pth'))
 
 
 # In[ ]:
