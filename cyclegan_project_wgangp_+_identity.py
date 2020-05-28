@@ -257,7 +257,9 @@ for epoch in range(opt.startepoch, opt.n_epochs):
             pred_tilde=netD_A(x_tilde)
             gradients = torch.autograd.grad(outputs=pred_tilde, inputs=x_tilde,
                                   grad_outputs=torch.ones(pred_tilde.size(), device = 'cuda'),
-                                    create_graph=True, retain_graph=True, only_inputs=True)[0]
+                                    create_graph=True, retain_graph=True, only_inputs=True)
+            print(gradients.size())
+            print(gradients.requires_grad())
 
             D_A_gradient_penalty = 100 * ((gradients.view(gradients.size(0), -1).norm(2, dim=1) - 1) ** 2).mean()
             # Total loss
