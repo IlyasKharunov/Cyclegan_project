@@ -30,18 +30,20 @@ Params = namedtuple('Params', ['startepoch', 'n_epochs',
                                'lr', 'decay_epoch', 
                                'size', 'input_nc', 
                                'output_nc', 'cuda', 
-                               'n_cpu', 'resume'])
+                               'n_cpu', 'resume', 
+                               'gpu_ids'])
 
 
 # In[ ]:
 
 
 opt = Params(startepoch = 4, n_epochs = 200, 
-             batchSize = 4, dataroot = 'database', 
+             batchSize = 8, dataroot = 'database', 
              lr = 0.0002, decay_epoch = 100, 
-             size = (200,360), input_nc = 3, 
+             size = (180,324), input_nc = 3, 
              output_nc = 3, cuda = True, 
-             n_cpu = 0, resume = False)
+             n_cpu = 0, resume = False, 
+             gpu_ids = [0,1])
 
 
 # In[ ]:
@@ -58,10 +60,14 @@ netD_B = Discriminator(opt.output_nc)
 
 
 #transfer to cuda device
-netG_A2B.cuda()
-netG_B2A.cuda()
-netD_A.cuda()
-netD_B.cuda()
+netG_A2B.to(opt.gpu_ids[0])
+netG_B2A.to(opt.gpu_ids[0])
+netD_A.to(opt.gpu_ids[0])
+netD_B.to(opt.gpu_ids[0])
+netG_A2B = torch.nn.DataParallel(netG_A2B, opt.gpu_ids)
+netG_B2A = torch.nn.DataParallel(netG_B2A, opt.gpu_ids)
+netD_A = torch.nn.DataParallel(netD_A, opt.gpu_ids)
+netD_B = torch.nn.DataParallel(netD_B, opt.gpu_ids)
 
 
 # In[11]:
