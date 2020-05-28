@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 from torch.utils.tensorboard import SummaryWriter 
@@ -20,6 +20,7 @@ from utils import LambdaLR
 from utils import weights_init_normal
 from datasetsdrive import ImageDataset
 from cyclegan_model import *
+from collections import OrderedDict
 
 
 # In[ ]:
@@ -56,7 +57,7 @@ netD_A = Discriminator(opt.input_nc)
 netD_B = Discriminator(opt.output_nc)
 
 
-# In[11]:
+# In[ ]:
 
 
 #init weights
@@ -90,13 +91,28 @@ if opt.resume == False:
 
 #load model to resume training
 if opt.resume == True:
-  netD_A.load_state_dict(torch.load(f'{base}outputwgp/netD_A.pth'))
-  netD_B.load_state_dict(torch.load(f'{base}outputwgp/netD_B.pth'))
-  netG_A2B.load_state_dict(torch.load(f'{base}outputwgp/netG_A2B.pth'))
-  netG_B2A.load_state_dict(torch.load(f'{base}outputwgp/netG_B2A.pth'))
+    state_dicts = []
+    # original saved file with DataParallel
+    state_dicts.append(torch.load(f'{base}outputwgp/netD_A.pth'))
+    state_dicts.append(torch.load(f'{base}outputwgp/netD_B.pth'))
+    state_dicts.append(torch.load(f'{base}outputwgp/netG_A2B.pth'))
+    state_dicts.append(torch.load(f'{base}outputwgp/netG_B2A.pth'))
+    # create new OrderedDict that does not contain `module.`
+    new_state_dicts = [OrderedDict() for i in range 4]
+    for i in range(len(state_dicts)):
+        for k, v in state_dicts[i].items():
+            name = k[7:] # remove `module.`
+            new_state_dicts[i][name] = v
+    # load params
+    netD_A.load_state_dict(torch.load(new_state_dict[0]))
+    netD_B.load_state_dict(torch.load(new_state_dict[1]))
+    netG_A2B.load_state_dict(torch.load(new_state_dict[2]))
+    netG_B2A.load_state_dict(torch.load(new_state_dict[3]))
+    del state_dicts
+    del new_state_dicts
 
 
-# In[10]:
+# In[ ]:
 
 
 #transfer to cuda device
@@ -153,14 +169,14 @@ fake_B_buffer = ReplayBuffer()
 
 # Dataset loader
 trsfrms = [ transforms.Resize(opt.size, Image.BICUBIC),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5)) ]
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5)) ]
 
 dataset = ImageDataset(opt.dataroot, transforms_=trsfrms, unaligned=True)
 
 dataloader = DataLoader(dataset, batch_size=opt.batchSize, 
-                        shuffle=True, num_workers=opt.n_cpu)
+                        shuffle=True, num_workers=opt.n_cpu, drop_last=True)
 
 
 # In[ ]:
@@ -182,7 +198,7 @@ log_loss_D_Summarized = 0
 log_loss_D_GAN = 0
 log_loss_D_Gradient_penalty = 0
 
-shift = len(dataloader)
+shift = len(dataloader)//opt.batchSize
 for epoch in range(opt.startepoch, opt.n_epochs):
     for i, batch in enumerate(dataloader):
         # Set model input
@@ -342,9 +358,9 @@ for epoch in range(opt.startepoch, opt.n_epochs):
     lr_scheduler_D_B.step()
 
     # Save models checkpoints
-    torch.save(netG_A2B.state_dict(), f'{base}outputwgp/netG_A2B{epoch}.pth')
-    torch.save(netG_B2A.state_dict(), f'{base}outputwgp/netG_B2A{epoch}.pth')
-    torch.save(netD_A.state_dict(), f'{base}outputwgp/netD_A{epoch}.pth')
-    torch.save(netD_B.state_dict(), f'{base}outputwgp/netD_B{epoch}.pth')
+    torch.save(netG_A2B.state_dict(), f'{base}outputwgp/netG_A2B{epoch%2}.pth')
+    torch.save(netG_B2A.state_dict(), f'{base}outputwgp/netG_B2A{epoch%2}.pth')
+    torch.save(netD_A.state_dict(), f'{base}outputwgp/netD_A{epoch%2}.pth')
+    torch.save(netD_B.state_dict(), f'{base}outputwgp/netD_B{epoch%2}.pth')
 ###################################
 
