@@ -69,6 +69,8 @@ netD_B.apply(weights_init_normal)
 # In[ ]:
 
 
+base = 'models/'
+
 #load model to finetune
 if opt.resume == False:
   h2z = torch.load(f'{base}pretrained/horse2zebra.pth')
@@ -166,12 +168,6 @@ dataloader = DataLoader(dataset, batch_size=opt.batchSize,
 
 # Loss plot
 logger = SummaryWriter(filename_suffix='first', log_dir='logs')
-
-
-# In[ ]:
-
-
-base = 'models/'
 
 
 # In[ ]:
