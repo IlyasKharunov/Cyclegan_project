@@ -131,7 +131,7 @@ dataloader = DataLoader(dataset, batch_size=opt.batchSize,
 
 
 # Loss plot
-logger = SummaryWriter(filename_suffix='first', log_dir='/content/logs')
+logger = SummaryWriter(filename_suffix='first', log_dir='logs')
 
 
 # In[ ]:
