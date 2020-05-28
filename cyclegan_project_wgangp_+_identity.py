@@ -254,11 +254,12 @@ for epoch in range(opt.startepoch, opt.n_epochs):
             eps = torch.rand((1),requires_grad=True, device = 'cuda')
             eps = eps.expand(real_A.size())
             x_tilde=eps*real_A+(1-eps)*fake_A.detach()
+            x_tilde.detach_()
             pred_tilde=netD_A(x_tilde)
             gradients = torch.autograd.grad(outputs=pred_tilde, inputs=x_tilde,
                                   grad_outputs=torch.ones(pred_tilde.size(), device = 'cuda'),
-                                    create_graph=True, retain_graph=True, only_inputs=True)
-            print(len(gradients))
+                                    create_graph=True, retain_graph=True)[0]
+            print(gradients.size())
             print('dummy')
             print(gradients.requires_grad())
 
