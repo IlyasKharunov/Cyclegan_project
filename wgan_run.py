@@ -38,13 +38,13 @@ Params = namedtuple('Params', ['startepoch', 'n_epochs',
 # In[ ]:
 
 
-opt = Params(startepoch = 4, n_epochs = 200, 
-             batchSize = 8, dataroot = 'database', 
+opt = Params(startepoch = 105, n_epochs = 200, 
+             batchSize = 16, dataroot = 'database', 
              lr = 0.0002, decay_epoch = 100, 
              size = (180,324), input_nc = 3, 
              output_nc = 3, cuda = True, 
-             n_cpu = 0, resume = False, 
-             gpu_ids = [0,1])
+             n_cpu = 0, resume = True, 
+             gpu_ids = [0,1,2,3])
 
 
 # In[ ]:
@@ -93,21 +93,21 @@ if opt.resume == False:
 if opt.resume == True:
     state_dicts = []
     # original saved file with DataParallel
-    state_dicts.append(torch.load(f'{base}outputwgp/netD_A.pth'))
-    state_dicts.append(torch.load(f'{base}outputwgp/netD_B.pth'))
-    state_dicts.append(torch.load(f'{base}outputwgp/netG_A2B.pth'))
-    state_dicts.append(torch.load(f'{base}outputwgp/netG_B2A.pth'))
+    state_dicts.append(torch.load(f'{base}output_bestw/netD_A0.pth'))
+    state_dicts.append(torch.load(f'{base}output_bestw/netD_B0.pth'))
+    state_dicts.append(torch.load(f'{base}output_bestw/netG_A2B0.pth'))
+    state_dicts.append(torch.load(f'{base}output_bestw/netG_B2A0.pth'))
     # create new OrderedDict that does not contain `module.`
-    new_state_dicts = [OrderedDict() for i in range 4]
+    new_state_dicts = [OrderedDict() for i in range(4)]
     for i in range(len(state_dicts)):
         for k, v in state_dicts[i].items():
             name = k[7:] # remove `module.`
             new_state_dicts[i][name] = v
     # load params
-    netD_A.load_state_dict(torch.load(new_state_dict[0]))
-    netD_B.load_state_dict(torch.load(new_state_dict[1]))
-    netG_A2B.load_state_dict(torch.load(new_state_dict[2]))
-    netG_B2A.load_state_dict(torch.load(new_state_dict[3]))
+    netD_A.load_state_dict(new_state_dicts[0])
+    netD_B.load_state_dict(new_state_dicts[1])
+    netG_A2B.load_state_dict(new_state_dicts[2])
+    netG_B2A.load_state_dict(new_state_dicts[3])
     del state_dicts
     del new_state_dicts
 
@@ -212,10 +212,10 @@ for epoch in range(opt.startepoch, opt.n_epochs):
         # Identity loss
         # G_A2B(B) should equal B if real B is fed
         same_B = netG_A2B(real_B)
-        loss_identity_B = criterion_identity(same_B, real_B)*75.0
+        loss_identity_B = criterion_identity(same_B, real_B)*25.0
         # G_B2A(A) should equal A if real A is fed
         same_A = netG_B2A(real_A)
-        loss_identity_A = criterion_identity(same_A, real_A)*75.0
+        loss_identity_A = criterion_identity(same_A, real_A)*25.0
 
         # GAN loss
         fake_B = netG_A2B(real_A)
@@ -228,10 +228,10 @@ for epoch in range(opt.startepoch, opt.n_epochs):
 
         # Cycle loss
         recovered_A = netG_B2A(fake_B)
-        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*150.0
+        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*50.0
 
         recovered_B = netG_A2B(fake_A)
-        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*150.0
+        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*50.0
 
         # Total loss
         #o1 = timeit.default_timer()
@@ -272,7 +272,7 @@ for epoch in range(opt.startepoch, opt.n_epochs):
                                     create_graph=True, retain_graph=None, only_inputs=True)[0]
 
             gradients = gradients.view(gradients.size(0), -1)
-            D_A_gradient_penalty = 100 * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+            D_A_gradient_penalty = 50 * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
             # Total loss
             loss_D_A_GAN = loss_D_real + loss_D_fake
             loss_D_A = loss_D_A_GAN + D_A_gradient_penalty
@@ -306,7 +306,7 @@ for epoch in range(opt.startepoch, opt.n_epochs):
                                     create_graph=True, retain_graph=None, only_inputs=True)[0]
             
             gradients = gradients.view(gradients.size(0), -1)
-            D_B_gradient_penalty = 100 * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+            D_B_gradient_penalty = 50 * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
             # Total loss
             loss_D_B_GAN = loss_D_real + loss_D_fake
             loss_D_B = loss_D_B_GAN + D_B_gradient_penalty
@@ -358,6 +358,7 @@ for epoch in range(opt.startepoch, opt.n_epochs):
     lr_scheduler_D_B.step()
 
     # Save models checkpoints
+    print(f'{epoch} epoch ended')
     torch.save(netG_A2B.state_dict(), f'{base}outputwgp/netG_A2B{epoch%2}.pth')
     torch.save(netG_B2A.state_dict(), f'{base}outputwgp/netG_B2A{epoch%2}.pth')
     torch.save(netD_A.state_dict(), f'{base}outputwgp/netD_A{epoch%2}.pth')
