@@ -1,0 +1,415 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[ ]:
+
+
+'''function ClickConnect(){
+    console.log("Clicked on connect button"); 
+    document.querySelector("colab-connect-button").click()
+}
+setInterval(ClickConnect,60000)'''
+
+
+# In[ ]:
+
+
+#colab section
+colab = False
+
+
+# In[ ]:
+
+
+if colab:
+    from google.colab import drive
+    drive.mount('/content/drive')
+
+    get_ipython().system('unzip -uq "/content/drive/MyDrive/Colab Notebooks/Cyclegan project/database.zip" -d "/content"')
+
+
+# In[ ]:
+
+
+if colab:
+    get_ipython().run_line_magic('load_ext', 'tensorboard')
+
+
+# In[ ]:
+
+
+if colab:
+    get_ipython().system('kill 432')
+
+
+# In[ ]:
+
+
+if colab:
+    get_ipython().run_line_magic('tensorboard', "--logdir='/content/logs'")
+
+
+# In[ ]:
+
+
+#end colab section
+
+
+# In[ ]:
+
+
+import re
+from itertools import chain
+from collections import namedtuple
+
+import torch
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter 
+import torchvision.transforms as transforms
+from PIL import Image
+
+from net_code.utils import ReplayBuffer, LambdaLR, weights_init_normal
+from net_code.dataset import ImageDataset
+from net_code.cyclegan_model import *
+
+
+# In[ ]:
+
+
+Params = namedtuple('Params', ['startepoch', 'n_epochs', 
+                               'batchSize', 'dataroot', 
+                               'lr', 'decay_epoch', 
+                               'size', 'input_nc', 
+                               'output_nc', 'cuda', 
+                               'n_cpu', 'resume', 
+                               'gpu_ids'])
+
+
+# In[ ]:
+
+
+opt = Params(startepoch = 4, n_epochs = 200, 
+             batchSize = 8, dataroot = 'database', 
+             lr = 0.0002, decay_epoch = 100, 
+             size = (180,324), input_nc = 3, 
+             output_nc = 3, cuda = True, 
+             n_cpu = 0, resume = False, 
+             gpu_ids = [0,1])
+
+
+# In[ ]:
+
+
+#init network
+netG_A2B = Generator(opt.input_nc, opt.output_nc)
+netG_B2A = Generator(opt.output_nc, opt.input_nc)
+netD_A = Discriminator(opt.input_nc)
+netD_B = Discriminator(opt.output_nc)
+'done'
+
+
+# In[ ]:
+
+
+zebras = True
+
+
+# In[ ]:
+
+
+#load model to finetune
+if opt.resume == False:
+    if zebras:
+        f1 = f'{base}pretrained/horse2zebra.pth'
+        f2 = f'{base}pretrained/zebra2horse.pth'
+        h2z = torch.load(f1)
+        z2h = torch.load(f2)
+
+        stat1 = netG_A2B.state_dict()
+        stat2 = netG_B2A.state_dict()
+
+        for i in stat1:
+            stat1[i] = h2z[i]
+
+        for i in stat1:
+            stat2[i] = z2h[i]
+
+        netG_A2B.load_state_dict(stat1)
+        netG_B2A.load_state_dict(stat2)
+    else:
+        netG_A2B.apply(weights_init_normal)
+        netG_B2A.apply(weights_init_normal)
+        netD_A.apply(weights_init_normal)
+        netD_B.apply(weights_init_normal)
+if opt.resume == True:
+    netD_A.load_state_dict(torch.load(f'{base}outputwgp/netD_A.pth'))
+    netD_B.load_state_dict(torch.load(f'{base}outputwgp/netD_B.pth'))
+    netG_A2B.load_state_dict(torch.load(f'{base}outputwgp/netG_A2B.pth'))
+    netG_B2A.load_state_dict(torch.load(f'{base}outputwgp/netG_B2A.pth'))
+
+
+# In[ ]:
+
+
+#transfer to cuda device
+if colab:
+    netG_A2B.cuda()
+    netG_B2A.cuda()
+    netD_A.cuda()
+    netD_B.cuda()
+else:
+    netG_A2B.to(opt.gpu_ids[0])
+    netG_B2A.to(opt.gpu_ids[0])
+    netD_A.to(opt.gpu_ids[0])
+    netD_B.to(opt.gpu_ids[0])
+    netG_A2B = torch.nn.DataParallel(netG_A2B, opt.gpu_ids)
+    netG_B2A = torch.nn.DataParallel(netG_B2A, opt.gpu_ids)
+    netD_A = torch.nn.DataParallel(netD_A, opt.gpu_ids)
+    netD_B = torch.nn.DataParallel(netD_B, opt.gpu_ids)
+'done'
+
+
+# In[ ]:
+
+
+# Lossess
+criterion_cycle = torch.nn.L1Loss()
+criterion_identity = torch.nn.L1Loss()
+
+
+# In[ ]:
+
+
+# Optimizers & LR schedulers
+optimizer_G = torch.optim.Adam(chain(netG_A2B.parameters(), netG_B2A.parameters()),
+                                lr=opt.lr, betas=(0.5, 0.999))
+optimizer_D_A = torch.optim.Adam(netD_A.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+optimizer_D_B = torch.optim.Adam(netD_B.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+
+lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G, lr_lambda=LambdaLR(opt.n_epochs, opt.startepoch, opt.decay_epoch).step)
+lr_scheduler_D_A = torch.optim.lr_scheduler.LambdaLR(optimizer_D_A, lr_lambda=LambdaLR(opt.n_epochs, opt.startepoch, opt.decay_epoch).step)
+lr_scheduler_D_B = torch.optim.lr_scheduler.LambdaLR(optimizer_D_B, lr_lambda=LambdaLR(opt.n_epochs, opt.startepoch, opt.decay_epoch).step)
+
+
+# In[ ]:
+
+
+# Inputs & targets memory allocation
+Tensor = torch.cuda.FloatTensor if opt.cuda else torch.Tensor
+input_A = Tensor(opt.batchSize, opt.input_nc, opt.size[0], opt.size[1])
+input_B = Tensor(opt.batchSize, opt.output_nc, opt.size[0], opt.size[1])
+output_A = Tensor(opt.batchSize, opt.input_nc, opt.size[0], opt.size[1])
+output_B = Tensor(opt.batchSize, opt.input_nc, opt.size[0], opt.size[1])
+target_real = Tensor(opt.batchSize).fill_(1.0)
+target_fake = Tensor(opt.batchSize).fill_(0.0)
+
+fake_A_buffer = ReplayBuffer()
+fake_B_buffer = ReplayBuffer()
+
+
+# In[ ]:
+
+
+# Dataset loader
+transforms_ = [ transforms.Resize(opt.size, Image.BICUBIC),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5)) ]
+
+dataset = ImageDataset(opt.dataroot, transforms_ = transforms_, aligned = False, place = 'drive')
+
+dataloader = DataLoader(dataset, batch_size=opt.batchSize, num_workers=opt.n_cpu)
+
+
+# In[ ]:
+
+
+# Loss plot
+logger = SummaryWriter(filename_suffix='first', log_dir='/content/logs')
+
+
+# In[ ]:
+
+
+if colab == False:
+    base = './models/'
+else:
+    base = '/content/drive/MyDrive/Colab Notebooks/Cyclegan project/models/'
+
+
+# In[ ]:
+
+
+###### Training ######
+
+log_loss_G_Summarized = 0
+log_loss_G_Identity = 0
+log_loss_G_GAN = 0
+log_loss_G_Cycle = 0
+log_loss_D_Summarized = 0
+log_loss_D_GAN = 0
+log_loss_D_Gradient_penalty = 0
+
+shift = len(dataloader)
+for epoch in range(opt.startepoch, opt.n_epochs):
+    for i, batch in enumerate(dataloader):
+        # Set model input
+        real_A = input_A.copy_(batch['A'])
+        real_B = input_B.copy_(batch['B'])
+
+        ###### Generators A2B and B2A ######
+        optimizer_G.zero_grad()
+
+        # Identity loss
+        # G_A2B(B) should equal B if real B is fed
+        same_B = netG_A2B(real_B)
+        loss_identity_B = criterion_identity(same_B, real_B)*75.0
+        # G_B2A(A) should equal A if real A is fed
+        same_A = netG_B2A(real_A)
+        loss_identity_A = criterion_identity(same_A, real_A)*75.0
+
+        # GAN loss
+        fake_B = netG_A2B(real_A)
+        pred_fake = netD_B(fake_B)
+        loss_GAN_A2B = -torch.mean(pred_fake)
+
+        fake_A = netG_B2A(real_B)
+        pred_fake = netD_A(fake_A)
+        loss_GAN_B2A = -torch.mean(pred_fake)
+
+        # Cycle loss
+        recovered_A = netG_B2A(fake_B)
+        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*150.0
+
+        recovered_B = netG_A2B(fake_A)
+        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*150.0
+
+        # Total loss
+        loss_G = loss_identity_A + loss_identity_B + loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB
+        loss_G.backward()
+        
+        optimizer_G.step()
+        ###################################
+
+        ###### Discriminator A ######
+        out_A = output_A.copy_(fake_A)
+        fake_A = fake_A_buffer.push_and_pop(fake_A)
+        for _ in range(5):
+            optimizer_D_A.zero_grad()
+
+            # Real loss
+            pred_real = netD_A(real_A)
+            # real loss part of wgan loss
+            loss_D_real = -torch.mean(pred_real)
+
+            # Fake loss
+            pred_fake = netD_A(fake_A.detach())
+            # fake loss part of wgan loss
+            loss_D_fake = torch.mean(pred_fake)
+            
+            # gradient penalty
+            eps = torch.rand((1),requires_grad=True, device = 'cuda')
+            eps = eps.expand(real_A.size())
+            x_tilde=eps*real_A+(1-eps)*fake_A.detach()
+            pred_tilde=netD_A(x_tilde)
+            gradients = torch.autograd.grad(outputs=pred_tilde, inputs=x_tilde,
+                                  grad_outputs=torch.ones(pred_tilde.size(), device = 'cuda'),
+                                    create_graph=True, retain_graph=None, only_inputs=True)[0]
+
+            gradients = gradients.view(gradients.size(0), -1)
+            D_A_gradient_penalty = 100 * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+            # Total loss
+            loss_D_A_GAN = loss_D_real + loss_D_fake
+            loss_D_A = loss_D_A_GAN + D_A_gradient_penalty
+            loss_D_A.backward()
+
+            optimizer_D_A.step()
+        ###################################
+
+        ###### Discriminator B ######
+        out_B = output_B.copy_(fake_B)
+        fake_B = fake_B_buffer.push_and_pop(fake_B)
+        for _ in range(5):
+            optimizer_D_B.zero_grad()
+
+            # Real loss
+            pred_real = netD_B(real_B)
+            # real loss part of wgan loss
+            loss_D_real = -torch.mean(pred_real)
+
+            # Fake loss
+            pred_fake = netD_B(fake_B.detach())
+            # fake loss part of wgan loss
+            loss_D_fake = torch.mean(pred_fake)
+
+            eps = torch.rand((1),requires_grad=True, device = 'cuda')
+            eps = eps.expand(real_B.size())
+            x_tilde=eps*real_B+(1-eps)*fake_B.detach()
+            pred_tilde=netD_B(x_tilde)
+            gradients = torch.autograd.grad(outputs=pred_tilde, inputs=x_tilde,
+                                  grad_outputs=torch.ones(pred_tilde.size(), device = 'cuda'),
+                                    create_graph=True, retain_graph=None, only_inputs=True)[0]
+            
+            gradients = gradients.view(gradients.size(0), -1)
+            D_B_gradient_penalty = 100 * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+            # Total loss
+            loss_D_B_GAN = loss_D_real + loss_D_fake
+            loss_D_B = loss_D_B_GAN + D_B_gradient_penalty
+            loss_D_B.backward()
+
+            optimizer_D_B.step()
+        ###################################
+        # Progress report (http://localhost:8097)
+        if i % 10 == 0:
+          logger.add_scalar("loss_G/Summarized", log_loss_G_Summarized/10, i + shift*epoch)
+          logger.add_scalar("loss_G/Identity", log_loss_G_Identity/10, i + shift*epoch)
+          logger.add_scalar("loss_G/GAN", log_loss_G_GAN/10, i + shift*epoch)
+          logger.add_scalar("loss_G/Cycle", log_loss_G_Cycle/10, i + shift*epoch)
+          logger.add_scalar("loss_D/Summarized", log_loss_D_Summarized/10, i + shift*epoch)
+          logger.add_scalar("loss_D/GAN", log_loss_D_GAN/10, i + shift*epoch)
+          logger.add_scalar("loss_D/Gradient penalty", log_loss_D_Gradient_penalty/10, i + shift*epoch)
+          logger.add_image('Real/A', (real_A[0] + 1)/2)
+          logger.add_image('Real/B', (real_B[0] + 1)/2)
+          logger.add_image('Fake/B', (out_B[0] + 1)/2)
+          logger.add_image('Fake/A', (out_A[0] + 1)/2)
+          logger.flush()
+          if i % 100 == 0:
+            print(i)
+          log_loss_G_Summarized = 0
+          log_loss_G_Identity = 0
+          log_loss_G_GAN = 0
+          log_loss_G_Cycle = 0
+          log_loss_D_Summarized = 0
+          log_loss_D_GAN = 0
+          log_loss_D_Gradient_penalty = 0
+
+        log_loss_G_Summarized += loss_G
+        log_loss_G_Identity += (loss_identity_A + loss_identity_B)
+        log_loss_G_GAN += (loss_GAN_A2B + loss_GAN_B2A)
+        log_loss_G_Cycle += (loss_cycle_ABA + loss_cycle_BAB)
+        log_loss_D_Summarized += (loss_D_A + loss_D_B)
+        log_loss_D_GAN += (loss_D_A_GAN + loss_D_B_GAN)
+        log_loss_D_Gradient_penalty += (D_B_gradient_penalty + D_A_gradient_penalty)
+        
+
+    # Update learning rates
+    lr_scheduler_G.step()
+    lr_scheduler_D_A.step()
+    lr_scheduler_D_B.step()
+
+    # Save models checkpoints
+    torch.save(netG_A2B.state_dict(), f'{base}outputwgp/netG_A2B.pth')
+    torch.save(netG_B2A.state_dict(), f'{base}outputwgp/netG_B2A.pth')
+    torch.save(netD_A.state_dict(), f'{base}outputwgp/netD_A.pth')
+    torch.save(netD_B.state_dict(), f'{base}outputwgp/netD_B.pth')
+###################################
+
+
+# In[ ]:
+
+
+torch.save(netG_A2B.state_dict(), f'{base}outputwgp/netG_A2B.pth')
+torch.save(netG_B2A.state_dict(), f'{base}outputwgp/netG_B2A.pth')
+torch.save(netD_A.state_dict(), f'{base}outputwgp/netD_A.pth')
+torch.save(netD_B.state_dict(), f'{base}outputwgp/netD_B.pth')
+
